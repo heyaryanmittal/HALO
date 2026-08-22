@@ -1,0 +1,21 @@
+# Node dependencies
+node_modules/
+
+# WhatsApp session data & caches
+app/session/
+.wwebjs_cache/
+.wwebjs_auth/
+.cache/
+
+# User uploads & data stores
+uploads/
+app/contacts/*
+!app/contacts/.gitkeep
+app/media/*
+!app/media/.gitkeep
+app/data/report-*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
