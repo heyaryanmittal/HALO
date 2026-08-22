@@ -1,7 +1,7 @@
 {
   "name": "halo",
   "version": "1.0.0",
-  "description": "HALO - Next-Gen WhatsApp Bulk Messenger & Automation Hub with Real-Time Analytics",
+  "description": "HALO: Human Automation and Lead Outreach — Hyper-efficient, secure, and human-like WhatsApp automation dashboard with neural activity simulation.",
   "main": "app/server.js",
   "scripts": {
     "dev": "vite",

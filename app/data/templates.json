@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "id": 1,
+    "name": "Welcome & Outreach",
+    "message": "Hey {name}! 🌟 Thanks for connecting with us. We are excited to share our latest updates with you. Let us know if you have any questions!",
+    "filePaths": []
+  }
+]
