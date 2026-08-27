@@ -13,8 +13,29 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [status, setStatus] = useState('Initializing client...');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
   const [qrCode, setQrCode] = useState(null);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Fetch initial auth status on mount
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const res = await fetch('/api/auth/status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsAuthenticated(!!data.isAuthenticated);
+          if (data.status) setStatus(data.status);
+          if (data.user) setUserInfo(data.user);
+          if (data.qrCode) setQrCode(data.qrCode);
+        }
+      } catch (err) {
+        console.error('Failed to fetch auth status:', err);
+      }
+    };
+    checkAuthStatus();
+  }, []);
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -40,6 +61,17 @@ export default function App() {
       setQrCode(null);
     });
 
+    socket.on('user_info', (info) => {
+      setUserInfo(info);
+    });
+
+    socket.on('logged_out', () => {
+      setIsAuthenticated(false);
+      setUserInfo(null);
+      setQrCode(null);
+      setIsQRModalOpen(true);
+    });
+
     socket.on('show_qr', () => {
       setIsAuthenticated(false);
       setIsQRModalOpen(true);
@@ -50,9 +82,31 @@ export default function App() {
       socket.off('status');
       socket.off('qr');
       socket.off('authenticated');
+      socket.off('user_info');
+      socket.off('logged_out');
       socket.off('show_qr');
     };
   }, []);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    setIsQRModalOpen(true); // Open modal immediately to show the logout/reconnect progress
+    try {
+      const res = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!data.success) {
+        console.warn('Logout notice:', data.message);
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-slate-950 font-sans">
@@ -69,7 +123,10 @@ export default function App() {
         setCurrentTab={setCurrentTab}
         status={status}
         isAuthenticated={isAuthenticated}
+        userInfo={userInfo}
+        isLoggingOut={isLoggingOut}
         onOpenQR={() => setIsQRModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
@@ -77,7 +134,10 @@ export default function App() {
         {currentTab === 'dashboard' && (
           <DashboardPage
             isAuthenticated={isAuthenticated}
+            userInfo={userInfo}
             onOpenQR={() => setIsQRModalOpen(true)}
+            onLogout={handleLogout}
+            isLoggingOut={isLoggingOut}
           />
         )}
         {currentTab === 'contacts' && <ContactsPage />}
@@ -93,6 +153,9 @@ export default function App() {
         qrCode={qrCode}
         status={status}
         isAuthenticated={isAuthenticated}
+        userInfo={userInfo}
+        isLoggingOut={isLoggingOut}
+        onLogout={handleLogout}
       />
 
       {/* Clean Modern Footer */}

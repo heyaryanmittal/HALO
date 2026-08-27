@@ -1,20 +1,41 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const path = require("path");
+const fs = require("fs");
 const { onClientDisconnect } = require("./campaignManager");
 const logger = require("../utils/logger");
 
 let client;
 let io;
 let isRestarting = false;
+let isLoggingOut = false;
 let currentQr = null;
 let isAuthenticated = false;
 let isReady = false;
 let qrRefreshCount = 0;
 let lastStatus = "Initializing WhatsApp client...";
+let userInfo = null;
 
 function updateStatus(newStatus) {
   lastStatus = newStatus;
   if (io) io.emit("status", newStatus);
+}
+
+async function cleanSessionDir(sessionPath) {
+  if (fs.existsSync(sessionPath)) {
+    try {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
+      logger.info("WHATSAPP", "Cleared local session auth storage.");
+    } catch (err) {
+      logger.warn("WHATSAPP", `Could not delete session path immediately: ${err.message}. Retrying in 1s...`);
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        logger.info("WHATSAPP", "Cleared local session auth storage on retry.");
+      } catch (retryErr) {
+        logger.error("WHATSAPP", `Failed to delete session directory: ${retryErr.message}`);
+      }
+    }
+  }
 }
 
 function startClient() {
@@ -22,11 +43,15 @@ function startClient() {
   currentQr = null;
   isAuthenticated = false;
   isReady = false;
+  userInfo = null;
 
   logger.info("WHATSAPP", "Launching headless browser and initializing engine...");
   updateStatus("Launching browser engine...");
 
   const sessionPath = path.join(__dirname, "..", "session");
+  if (!fs.existsSync(sessionPath)) {
+    fs.mkdirSync(sessionPath, { recursive: true });
+  }
 
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: sessionPath }),
@@ -61,6 +86,7 @@ function startClient() {
     qrRefreshCount += 1;
     isAuthenticated = false;
     isReady = false;
+    userInfo = null;
 
     updateStatus("QR code received. Please scan.");
     if (io) {
@@ -86,13 +112,21 @@ function startClient() {
     qrRefreshCount = 0;
 
     const userNumber = client.info?.wid?.user || "Unknown";
-    const pushName = client.info?.pushname ? ` (${client.info.pushname})` : "";
-    logger.success("WHATSAPP", `Client ready and connected as +${userNumber}${pushName}.`);
+    const pushName = client.info?.pushname || "";
+    userInfo = {
+      number: client.info?.wid?.user || "",
+      pushname: client.info?.pushname || "",
+      platform: client.info?.platform || "",
+    };
+
+    const pushNameDisplay = pushName ? ` (${pushName})` : "";
+    logger.success("WHATSAPP", `Client ready and connected as +${userNumber}${pushNameDisplay}.`);
 
     updateStatus("Connected");
     if (io) {
       io.emit("status", "Connected");
       io.emit("authenticated");
+      io.emit("user_info", userInfo);
     }
   });
 
@@ -113,11 +147,12 @@ function startClient() {
 }
 
 async function handleDisconnect(reason) {
-  if (isRestarting) return;
+  if (isRestarting || isLoggingOut) return;
   isRestarting = true;
   isAuthenticated = false;
   isReady = false;
   currentQr = null;
+  userInfo = null;
 
   updateStatus("Client disconnected. Restarting...");
   if (io) io.emit("show_qr");
@@ -138,6 +173,77 @@ async function handleDisconnect(reason) {
   }, 5000);
 }
 
+async function logoutClient() {
+  if (isLoggingOut) {
+    return { success: false, message: "Logout already in progress" };
+  }
+  isLoggingOut = true;
+  isRestarting = true; // Prevent duplicate handleDisconnect trigger
+
+  logger.info("WHATSAPP", "Logging out of WhatsApp session requested by user...");
+  updateStatus("Logging out of WhatsApp...");
+  if (io) {
+    io.emit("status", "Logging out...");
+    io.emit("logged_out");
+    io.emit("show_qr");
+    onClientDisconnect(io);
+  }
+
+  isAuthenticated = false;
+  isReady = false;
+  currentQr = null;
+  userInfo = null;
+  qrRefreshCount = 0;
+
+  const sessionPath = path.join(__dirname, "..", "session");
+
+  try {
+    if (client) {
+      try {
+        await client.logout();
+        logger.info("WHATSAPP", "WhatsApp Web session successfully unlinked.");
+      } catch (logoutErr) {
+        logger.warn("WHATSAPP", `Client logout notice: ${logoutErr.message}`);
+      }
+      try {
+        await client.destroy();
+        logger.info("WHATSAPP", "WhatsApp browser instance destroyed.");
+      } catch (destroyErr) {
+        logger.warn("WHATSAPP", `Client destroy notice: ${destroyErr.message}`);
+      }
+    }
+  } catch (err) {
+    logger.error("WHATSAPP", `Error during logout cleanup: ${err.message}`);
+  }
+
+  // Purge the session storage folder so the next start creates a fresh QR code
+  await cleanSessionDir(sessionPath);
+  if (!fs.existsSync(sessionPath)) {
+    fs.mkdirSync(sessionPath, { recursive: true });
+  }
+
+  updateStatus("Logged out. Initializing new QR code...");
+  if (io) io.emit("status", "Initializing fresh session...");
+
+  isLoggingOut = false;
+  isRestarting = false;
+
+  // Start fresh client
+  startClient();
+
+  return { success: true, message: "Logged out successfully" };
+}
+
+function getAuthStatus() {
+  return {
+    isAuthenticated: isAuthenticated && isReady,
+    isReady,
+    status: lastStatus,
+    qrCode: currentQr,
+    user: userInfo,
+  };
+}
+
 function initializeWhatsAppClient(socketIo) {
   io = socketIo;
   startClient();
@@ -149,6 +255,9 @@ function initializeWhatsAppClient(socketIo) {
     if (isReady || (client && client.info)) {
       socket.emit("status", "Connected");
       socket.emit("authenticated");
+      if (userInfo) {
+        socket.emit("user_info", userInfo);
+      }
     } else if (currentQr) {
       socket.emit("status", "QR code received. Please scan.");
       socket.emit("qr", currentQr);
@@ -156,6 +265,11 @@ function initializeWhatsAppClient(socketIo) {
     } else {
       socket.emit("status", lastStatus);
     }
+
+    socket.on("logoutWhatsApp", async (ack) => {
+      const res = await logoutClient();
+      if (typeof ack === "function") ack(res);
+    });
 
     socket.on("disconnect", () => {
       logger.info("SOCKET", `Client disconnected (${socket.id}).`);
@@ -165,4 +279,9 @@ function initializeWhatsAppClient(socketIo) {
 
 const getClient = () => client;
 
-module.exports = { initializeWhatsAppClient, getClient };
+module.exports = {
+  initializeWhatsAppClient,
+  getClient,
+  logoutClient,
+  getAuthStatus,
+};

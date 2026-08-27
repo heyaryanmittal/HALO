@@ -22,7 +22,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 
-export default function DashboardPage({ isAuthenticated, onOpenQR }) {
+export default function DashboardPage({ isAuthenticated, userInfo, onOpenQR, onLogout, isLoggingOut }) {
   // Data state
   const [contactGroups, setContactGroups] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -100,27 +100,26 @@ export default function DashboardPage({ isAuthenticated, onOpenQR }) {
       setCampaignState(state);
     };
 
-    const handleLog = (msg) => {
-      const timestamp = new Date().toLocaleTimeString();
-      setLogs((prev) => [...prev.slice(-200), { time: timestamp, text: msg }]);
-    };
-
-    const handleStatsUpdated = () => {
-      fetchData();
+    const handleLog = (logMessage) => {
+      setLogs((prev) => [
+        ...prev,
+        {
+          id: Date.now() + Math.random(),
+          timestamp: new Date().toLocaleTimeString(),
+          message: logMessage,
+        },
+      ]);
     };
 
     socket.on('campaignState', handleCampaignState);
     socket.on('log', handleLog);
-    socket.on('statsUpdated', handleStatsUpdated);
 
     return () => {
       socket.off('campaignState', handleCampaignState);
       socket.off('log', handleLog);
-      socket.off('statsUpdated', handleStatsUpdated);
     };
   }, []);
 
-  // Auto-scroll logs
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
@@ -137,6 +136,7 @@ export default function DashboardPage({ isAuthenticated, onOpenQR }) {
   const handleStartCampaign = async (e) => {
     e.preventDefault();
     if (!isAuthenticated) {
+      alert('Please authenticate your WhatsApp account first.');
       onOpenQR();
       return;
     }
@@ -195,7 +195,7 @@ export default function DashboardPage({ isAuthenticated, onOpenQR }) {
 
   const handlePause = () => socket.emit('pauseCampaign');
   const handleResume = () => socket.emit('resumeCampaign');
-  const handleStop = () => {
+  const handleEnd = () => {
     if (window.confirm('Are you sure you want to stop the campaign and save the report?')) {
       socket.emit('endCampaign');
     }
@@ -270,7 +270,7 @@ export default function DashboardPage({ isAuthenticated, onOpenQR }) {
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">WhatsApp Session</p>
               <p className="text-lg font-bold text-white mt-1">
-                {isAuthenticated ? 'Authenticated' : 'Not Connected'}
+                {isAuthenticated ? (userInfo?.number ? `+${userInfo.number}` : 'Connected') : 'Not Connected'}
               </p>
             </div>
             <div className={`p-3 rounded-xl border ${
@@ -281,13 +281,24 @@ export default function DashboardPage({ isAuthenticated, onOpenQR }) {
               <ShieldCheck className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-center text-xs">
+          <div className="mt-3 flex items-center justify-between text-xs">
             {!isAuthenticated ? (
               <button onClick={onOpenQR} className="text-rose-400 hover:underline font-medium">
                 Click here to scan QR code &rarr;
               </button>
             ) : (
-              <span className="text-emerald-400">Device linked & ready</span>
+              <div className="flex items-center justify-between w-full">
+                <span className="text-emerald-400 font-medium">
+                  {userInfo?.pushname ? `${userInfo.pushname} • Active` : 'Linked & Ready'}
+                </span>
+                <button
+                  type="button"
+                  onClick={onOpenQR}
+                  className="text-xs text-slate-400 hover:text-emerald-400 underline transition-colors"
+                >
+                  Manage
+                </button>
+              </div>
             )}
           </div>
         </div>

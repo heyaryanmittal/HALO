@@ -8,6 +8,7 @@ const mediaRoutes = require("./api/media");
 const reportRoutes = require("./api/reports");
 const statsRoutes = require("./api/stats");
 const templateRoutes = require("./api/templates");
+const authRoutes = require("./api/auth");
 
 // Use the imported routes
 router.use("/campaign", campaignRoutes);
@@ -16,5 +17,6 @@ router.use("/media", mediaRoutes);
 router.use("/reports", reportRoutes);
 router.use("/stats", statsRoutes);
 router.use("/templates", templateRoutes);
+router.use("/auth", authRoutes);
 
 module.exports = router;
