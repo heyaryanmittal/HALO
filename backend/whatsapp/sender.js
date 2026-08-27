@@ -17,28 +17,19 @@ function stopSending() {
   campaignShouldStop = true;
 }
 
-async function simulateReadingActivity(io) {
-  const client = getClient();
-  try {
-    io.emit("log", "SIMULATING: Pausing for idle activity...");
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.random() * 10000 + 5000),
-    );
-    const chats = await client.getChats();
-    if (chats.length > 0) {
-      const randomChat =
-        chats[Math.floor(Math.random() * Math.min(chats.length, 10))];
-      io.emit(
-        "log",
-        `SIMULATING: Opening chat with "${randomChat.name}" to look human...`,
-      );
-      await randomChat.sendStateTyping();
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      await randomChat.clearState();
-    }
-  } catch (e) {
-    io.emit("log", "Could not simulate reading activity.");
-  }
+function formatMessageTemplate(templateText, contact) {
+  let text = templateText || "";
+  if (!text) return "";
+
+  // Replace standard and custom placeholders: {name}, {{name}}, {phone}, {{phone}}, etc.
+  Object.keys(contact).forEach((key) => {
+    const val = String(contact[key] ?? "");
+    const regexDouble = new RegExp(`{{${key}}}`, "gi");
+    const regexSingle = new RegExp(`{${key}}`, "gi");
+    text = text.replace(regexDouble, val).replace(regexSingle, val);
+  });
+
+  return text;
 }
 
 async function sendBatch(io) {
@@ -70,31 +61,31 @@ async function sendBatch(io) {
     }
 
     const contact = campaign.contacts[i];
-    const name = contact.name || "";
-    let number = String(contact.number).replace(/\D/g, "");
+    const name = contact.name || contact.Name || "";
+    let rawNumber = String(contact.number || contact.Number || contact.phone || contact.Phone || "").replace(/\D/g, "");
 
-    if (number.length === 10 && !number.startsWith("91")) {
-      number = "91" + number;
+    // Default to Indian international format if 10 digits provided
+    if (rawNumber.length === 10 && !rawNumber.startsWith("91")) {
+      rawNumber = "91" + rawNumber;
     }
-
-    const formattedNumber = `${number}@c.us`;
 
     try {
       io.emit(
         "log",
-        `[${i + 1}/${campaign.totalContacts}] Processing contact: ${number}`,
+        `[${i + 1}/${campaign.totalContacts}] Processing contact: ${rawNumber}${name ? ` (${name})` : ""}`,
       );
 
-      const isRegistered = await client.isRegisteredUser(formattedNumber);
+      // Verify WhatsApp registration using official getNumberId API
+      const numberDetails = await client.getNumberId(rawNumber);
 
-      if (!isRegistered) {
-        io.emit("log", `Skipping ${number}: Not on WhatsApp.`);
-        campaign.report.push({ number, name, status: "Not on WhatsApp" });
+      if (!numberDetails) {
+        io.emit("log", `Skipping ${rawNumber}: Not registered on WhatsApp.`);
+        campaign.report.push({ number: rawNumber, name, status: "Not on WhatsApp" });
         campaign.failedThisCampaign++;
         continue;
       }
 
-      const chat = await client.getChatById(formattedNumber);
+      const targetJid = numberDetails._serialized; // e.g. "919876543210@c.us"
 
       for (
         let templateIndex = 0;
@@ -102,50 +93,47 @@ async function sendBatch(io) {
         templateIndex++
       ) {
         const template = campaign.templates[templateIndex];
-
-        let messageText = template.text || template.message || "";
-        messageText = messageText.replace(/{{name}}/g, name);
+        const rawTemplateText = template.text || template.message || "";
+        const messageText = formatMessageTemplate(rawTemplateText, contact);
 
         if (template.filePaths && template.filePaths.length > 0) {
           for (const file of template.filePaths) {
             const mediaPath = path.resolve(__dirname, "../media", file);
 
-            logger.info("MEDIA", `Attaching media asset: ${mediaPath}`);
+            logger.info("MEDIA", `Attaching media asset: ${file}`);
 
             if (fs.existsSync(mediaPath)) {
               const media = MessageMedia.fromFilePath(mediaPath);
-
-              io.emit("log", `Sending media ${file} to ${number}`);
-
-              await chat.sendMessage(media, { caption: messageText });
+              io.emit("log", `Sending media attachment (${file}) to ${rawNumber}`);
+              await client.sendMessage(targetJid, media, { caption: messageText });
             } else {
-              io.emit("log", `Media file not found: ${file}`);
-
-              await chat.sendMessage(messageText);
+              io.emit("log", `Media file not found (${file}), sending text only.`);
+              await client.sendMessage(targetJid, messageText);
             }
 
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 1500));
           }
         } else {
-          await chat.sendMessage(messageText);
+          await client.sendMessage(targetJid, messageText);
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
-      campaign.report.push({ number, name, status: "Sent" });
-
+      campaign.report.push({ number: rawNumber, name, status: "Sent" });
       campaign.sentToday++;
       campaign.sentThisCampaign++;
 
-      io.emit("log", `Messages sent to ${number}`);
+      io.emit("log", `✔ Message sent to ${rawNumber}`);
     } catch (err) {
-      io.emit("log", `ERROR sending to ${number}: ${err.message}`);
+      const errorMsg = err.message || String(err);
+      logger.error("CAMPAIGN", `Error sending to ${rawNumber}:`, errorMsg);
+      io.emit("log", `ERROR sending to ${rawNumber}: ${errorMsg}`);
 
       campaign.report.push({
-        number,
+        number: rawNumber,
         name,
-        status: `Failed: ${err.message}`,
+        status: `Failed: ${errorMsg}`,
       });
 
       campaign.failedThisCampaign++;
@@ -166,7 +154,6 @@ async function sendBatch(io) {
       ) * 1000;
 
     io.emit("log", `Waiting ${delay / 1000} seconds...`);
-
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
@@ -174,17 +161,12 @@ async function sendBatch(io) {
 
   if (campaign.currentIndex >= campaign.contacts.length) {
     io.emit("log", "Campaign finished!");
-
     campaign.isRunning = false;
-
     saveReport(io);
-
     updateStats(io, campaign.sentThisCampaign);
-
     io.emit("campaignState", getCampaignState());
   } else {
     io.emit("log", `Batch complete. Click start for next batch.`);
-
     io.emit("batchComplete", {
       nextBatch: campaign.currentBatchIndex + 1,
     });
