@@ -195,7 +195,7 @@ export default function DashboardPage({ isAuthenticated, userInfo, onOpenQR, onL
 
   const handlePause = () => socket.emit('pauseCampaign');
   const handleResume = () => socket.emit('resumeCampaign');
-  const handleEnd = () => {
+  const handleStop = () => {
     if (window.confirm('Are you sure you want to stop the campaign and save the report?')) {
       socket.emit('endCampaign');
     }
