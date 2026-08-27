@@ -17,11 +17,13 @@ function stopSending() {
   campaignShouldStop = true;
 }
 
+/**
+ * Replaces all placeholders ({name}, {{name}}, {customField}, etc.) dynamically from the contact row.
+ */
 function formatMessageTemplate(templateText, contact) {
   let text = templateText || "";
   if (!text) return "";
 
-  // Replace standard and custom placeholders: {name}, {{name}}, {phone}, {{phone}}, etc.
   Object.keys(contact).forEach((key) => {
     const val = String(contact[key] ?? "");
     const regexDouble = new RegExp(`{{${key}}}`, "gi");
@@ -62,9 +64,11 @@ async function sendBatch(io) {
 
     const contact = campaign.contacts[i];
     const name = contact.name || contact.Name || "";
-    let rawNumber = String(contact.number || contact.Number || contact.phone || contact.Phone || "").replace(/\D/g, "");
+    let rawNumber = String(
+      contact.number || contact.Number || contact.phone || contact.Phone || ""
+    ).replace(/\D/g, "");
 
-    // Default to Indian international format if 10 digits provided
+    // Default to Indian country code prefix if 10 digits provided
     if (rawNumber.length === 10 && !rawNumber.startsWith("91")) {
       rawNumber = "91" + rawNumber;
     }
@@ -75,18 +79,49 @@ async function sendBatch(io) {
         `[${i + 1}/${campaign.totalContacts}] Processing contact: ${rawNumber}${name ? ` (${name})` : ""}`,
       );
 
-      // Verify WhatsApp registration using official getNumberId API
+      // Verify WhatsApp registration
       const numberDetails = await client.getNumberId(rawNumber);
 
       if (!numberDetails) {
         io.emit("log", `Skipping ${rawNumber}: Not registered on WhatsApp.`);
-        campaign.report.push({ number: rawNumber, name, status: "Not on WhatsApp" });
+        campaign.report.push({
+          number: rawNumber,
+          name,
+          status: "Not on WhatsApp",
+        });
         campaign.failedThisCampaign++;
         continue;
       }
 
-      const targetJid = numberDetails._serialized; // e.g. "919876543210@c.us"
+      const targetJid = numberDetails._serialized;
 
+      // 🧠 Neural Simulation: Natural Reading Activity Pause
+      if (campaign.simulateReading && Math.random() > 0.4) {
+        const readPauseMs = Math.floor(Math.random() * 3000 + 2000);
+        io.emit("log", `Simulating organic reading pause (${(readPauseMs / 1000).toFixed(1)}s)...`);
+        await new Promise((resolve) => setTimeout(resolve, readPauseMs));
+      }
+
+      // 🧠 Neural Simulation: Human Typing Cadence
+      const minTyping = campaign.minTypingDelay || 0;
+      const maxTyping = campaign.maxTypingDelay || minTyping;
+      if (maxTyping > 0) {
+        const typingDuration = Math.floor(
+          Math.random() * (maxTyping - minTyping + 1) + minTyping
+        );
+        io.emit("log", `Simulating keystroke cadence (${(typingDuration / 1000).toFixed(1)}s)...`);
+
+        try {
+          const chat = await client.getChatById(targetJid).catch(() => null);
+          if (chat) await chat.sendStateTyping().catch(() => {});
+          await new Promise((resolve) => setTimeout(resolve, typingDuration));
+          if (chat) await chat.clearState().catch(() => {});
+        } catch (_) {
+          await new Promise((resolve) => setTimeout(resolve, typingDuration));
+        }
+      }
+
+      // Dispatch templates to target contact
       for (
         let templateIndex = 0;
         templateIndex < campaign.templates.length;
@@ -102,21 +137,28 @@ async function sendBatch(io) {
 
             logger.info("MEDIA", `Attaching media asset: ${file}`);
 
+            // Media attachment delay
+            const minAttach = campaign.minAttachDelay || 1000;
+            const maxAttach = campaign.maxAttachDelay || minAttach;
+            const attachWait = Math.floor(
+              Math.random() * (maxAttach - minAttach + 1) + minAttach
+            );
+            await new Promise((resolve) => setTimeout(resolve, attachWait));
+
             if (fs.existsSync(mediaPath)) {
               const media = MessageMedia.fromFilePath(mediaPath);
               io.emit("log", `Sending media attachment (${file}) to ${rawNumber}`);
               await client.sendMessage(targetJid, media, { caption: messageText });
             } else {
-              io.emit("log", `Media file not found (${file}), sending text only.`);
+              io.emit("log", `Media file not found (${file}), sending text.`);
               await client.sendMessage(targetJid, messageText);
             }
-
-            await new Promise((resolve) => setTimeout(resolve, 1500));
           }
         } else {
           await client.sendMessage(targetJid, messageText);
         }
 
+        // Inter-template breathing pause
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
@@ -147,13 +189,13 @@ async function sendBatch(io) {
       io.emit("campaignState", getCampaignState());
     }
 
+    // Dynamic anti-ban jitter delay between contacts
+    const minDelay = campaign.minDelay || 15;
+    const maxDelay = campaign.maxDelay || minDelay;
     const delay =
-      Math.floor(
-        Math.random() * (campaign.maxDelay - campaign.minDelay + 1) +
-          campaign.minDelay,
-      ) * 1000;
+      Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay) * 1000;
 
-    io.emit("log", `Waiting ${delay / 1000} seconds...`);
+    io.emit("log", `Waiting ${(delay / 1000).toFixed(1)} seconds before next contact...`);
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
