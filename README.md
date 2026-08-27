@@ -99,37 +99,41 @@ cd HALO
 ```
 
 ### 2. Install Dependencies
+
+Install dependencies for both frontend and backend in their respective directories:
+
 ```bash
+# Frontend
+cd frontend
+npm install
+
+# Backend
+cd ../backend
 npm install
 ```
 
-### 3. Build the Production Bundle
-```bash
-npm run build
-```
+### 3. Launch HALO
 
-### 4. Launch HALO
-```bash
-npm start
-```
+Run the backend and frontend in separate terminals:
 
-Open your browser and navigate to **[http://localhost:3000](http://localhost:3000)**.
+- **Terminal 1: Backend API & Automation Server**:
+  ```bash
+  cd backend
+  npm run dev      # or: npm start
+  ```
 
-> **💡 Development Mode**: To run frontend hot-reloading with the backend concurrently:
-> ```bash
-> # Terminal 1: Backend Server
-> npm start
-> 
-> # Terminal 2: Vite Dev Server
-> npm run dev
-> ```
-> Dev server runs at `http://localhost:5173` with automatic API and WebSocket proxying.
+- **Terminal 2: Frontend React Dashboard**:
+  ```bash
+  cd frontend
+  npm run dev
+  ```
+  Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
 ---
 
 ## 📖 Step-by-Step Campaign Workflow
 
-1. **Pair WhatsApp Account**: Open the dashboard at `http://localhost:3000` and click **Scan QR Code**. Scan the QR code using WhatsApp on your phone (**Linked Devices** $\rightarrow$ **Link a Device**).
+1. **Pair WhatsApp Account**: Open the dashboard at `http://localhost:5173` (or `http://localhost:3000`) and click **Scan QR Code**. Scan the QR code using WhatsApp on your phone (**Linked Devices** $\rightarrow$ **Link a Device**).
 2. **Import Contact Lists**: Navigate to the **Contacts** tab and upload your CSV or Excel list. Ensure a column named `number` or `phone` is present with international country codes (e.g. `919876543210`).
 3. **Design Message Templates**: In the **Templates** tab, draft your personalized message. Insert dynamic variables like `{name}` and format using WhatsApp markdown syntax.
 4. **Attach Media (Optional)**: Upload media files in the **Media Vault** and link them to your template.
@@ -153,28 +157,37 @@ To safeguard your WhatsApp account and ensure maximum deliverability:
 
 ```
 HALO/
-├── app/                        # Backend Application (Node.js / Express)
+├── backend/                    # Backend Application (Node.js / Express / Socket.IO)
 │   ├── contacts/               # Uploaded contact datasets (.gitkeep)
 │   ├── data/                   # Campaign progress, stats, and template JSON data
 │   ├── media/                  # Media Vault attachments (.gitkeep)
+│   ├── node_modules/           # Backend installed dependencies
 │   ├── routes/                 # Express REST API route handlers
 │   │   ├── api/                # Sub-routes (campaign, contacts, media, reports, templates)
 │   │   └── index.js            # Unified API router
+│   ├── uploads/                # Temporary upload staging (.gitkeep)
 │   ├── utils/                  # Data parser utilities (CSV/Excel)
 │   ├── whatsapp/               # WhatsApp Web client, sender & campaign manager
-│   └── server.js               # Unified server entrypoint & WebSocket handler
-├── src/                        # Frontend Application (React 19 + Vite)
-│   ├── components/             # Reusable UI components (Navbar, QRModal, etc.)
-│   ├── pages/                  # Dashboard, Contacts, Templates, Media, Reports
-│   ├── services/               # Socket.IO client service
-│   ├── App.jsx                 # Root React component & tab routing
-│   ├── index.css               # Design system & Tailwind styling
-│   └── main.jsx                # React DOM entry point
-├── uploads/                    # Temporary upload staging (.gitkeep)
-├── index.html                  # HTML entry point
-├── package.json                # Project dependencies and npm scripts
-├── vite.config.mjs             # Vite configuration with proxy rules
-├── .gitignore                  # Git ignore rules for build, session & secrets
+│   ├── package-lock.json       # Backend locked dependencies
+│   ├── package.json            # Backend dependencies & scripts
+│   ├── server.js               # Backend entry point & WebSocket server
+│   └── .gitignore              # Backend-specific ignore rules
+├── frontend/                   # Frontend Application (React 19 + Vite + Tailwind)
+│   ├── node_modules/           # Frontend installed dependencies
+│   ├── src/                    # React source code
+│   │   ├── components/         # Reusable UI components (Navbar, QRModal, etc.)
+│   │   ├── pages/              # Dashboard, Contacts, Templates, Media, Reports
+│   │   ├── services/           # Socket.IO client service
+│   │   ├── App.jsx             # Root React component & tab routing
+│   │   ├── index.css           # Design system & Tailwind styling
+│   │   └── main.jsx            # React DOM entry point
+│   ├── index.html              # HTML entry point
+│   ├── package-lock.json       # Frontend locked dependencies
+│   ├── package.json            # Frontend dependencies & scripts
+│   ├── vite.config.mjs         # Vite configuration with proxy rules
+│   └── .gitignore              # Frontend-specific ignore rules
+├── .gitignore                  # Root git ignore rules
+├── LICENSE                     # MIT License
 └── README.md                   # Project documentation
 ```
 

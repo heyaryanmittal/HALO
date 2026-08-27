@@ -1,5 +1,7 @@
 # Node dependencies
 node_modules/
+frontend/node_modules/
+backend/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -7,11 +9,13 @@ pnpm-debug.log*
 
 # Production build artifacts
 dist/
+frontend/dist/
 dist-ssr/
 *.local
 
 # WhatsApp session data & browser caches
-app/session/
+session/
+backend/session/
 .wwebjs_cache/
 .wwebjs_auth/
 .cache/
@@ -19,11 +23,13 @@ app/session/
 # User uploads & contact/media data
 uploads/*
 !uploads/.gitkeep
-app/contacts/*
-!app/contacts/.gitkeep
-app/media/*
-!app/media/.gitkeep
-app/data/report-*
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/contacts/*
+!backend/contacts/.gitkeep
+backend/media/*
+!backend/media/.gitkeep
+backend/data/report-*
 
 # Environment variables
 .env

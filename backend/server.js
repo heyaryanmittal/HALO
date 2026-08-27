@@ -33,8 +33,8 @@ const mediaDir = path.join(__dirname, "media");
 const dataDir = path.join(__dirname, "data");
 const contactDir = path.join(__dirname, "contacts");
 const sessionDir = path.join(__dirname, "session");
-const contactUploadDir = path.join(__dirname, "..", "uploads");
-const distDir = path.join(__dirname, "..", "dist");
+const contactUploadDir = path.join(__dirname, "uploads");
+const distDir = path.join(__dirname, "..", "frontend", "dist");
 
 [mediaDir, dataDir, contactDir, contactUploadDir, sessionDir].forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

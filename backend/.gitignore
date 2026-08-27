@@ -1,0 +1,10 @@
+node_modules/
+session/
+uploads/*
+!uploads/.gitkeep
+media/*
+!media/.gitkeep
+.env
+.env.local
+*.log
+npm-debug.log*

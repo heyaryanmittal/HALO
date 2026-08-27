@@ -1,0 +1,25 @@
+{
+  "name": "halo-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "HALO React Frontend Dashboard",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.33.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.2"
+  }
+}
