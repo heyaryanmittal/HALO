@@ -1,9 +1,22 @@
+// Suppress Node.js DEP0040 punycode deprecation warning from dependencies
+const originalEmitWarning = process.emitWarning;
+process.emitWarning = (warning, ...args) => {
+  if (
+    (typeof warning === "string" && warning.includes("punycode")) ||
+    (warning && (warning.code === "DEP0040" || warning.name === "DeprecationWarning" && String(warning).includes("punycode")))
+  ) {
+    return;
+  }
+  return originalEmitWarning.call(process, warning, ...args);
+};
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const fs = require("fs");
 const path = require("path");
 const apiRoutes = require("./routes");
+const logger = require("./utils/logger");
 
 const { initializeWhatsAppClient } = require("./whatsapp/client");
 const {
@@ -19,11 +32,10 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
-// Add io to the app object to make it accessible in routes
 app.set("socketio", io);
 
 const PORT = process.env.PORT || 3000;
@@ -76,14 +88,12 @@ if (fs.existsSync(distDir)) {
     res.sendFile(path.join(distDir, "index.html"));
   });
 } else {
-  // If dist not built yet, inform developer
   app.get("/", (req, res) => {
-    res.send("<h1>HALO Server Running</h1><p>Run <code>npm run build</code> or <code>npm run dev</code> to launch the React frontend.</p>");
+    res.send("<h1>HALO Server Running</h1><p>Run <code>cd frontend && npm run dev</code> to launch the React frontend dashboard.</p>");
   });
 }
 
-// --- WHATSAPP & SOCKET.IO INITIALIZATION ---
-initializeWhatsAppClient(io);
+// --- CAMPAIGN SOCKET EVENTS ---
 io.on("connection", (socket) => {
   socket.emit("campaignState", getCampaignState());
   socket.on("sendNextBatch", () => sendNextBatch(io));
@@ -92,6 +102,8 @@ io.on("connection", (socket) => {
   socket.on("endCampaign", () => endCampaign(io));
 });
 
+// --- SERVER START & WHATSAPP ENGINE INITIALIZATION ---
 server.listen(PORT, () => {
-  console.log(`HALO Server is running on http://localhost:${PORT}`);
+  logger.banner(PORT);
+  initializeWhatsAppClient(io);
 });

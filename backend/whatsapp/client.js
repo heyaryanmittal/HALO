@@ -1,84 +1,141 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const path = require("path");
 const { onClientDisconnect } = require("./campaignManager");
+const logger = require("../utils/logger");
 
 let client;
 let io;
 let isRestarting = false;
+let currentQr = null;
+let isAuthenticated = false;
+let isReady = false;
+let qrRefreshCount = 0;
+let lastStatus = "Initializing WhatsApp client...";
+
+function updateStatus(newStatus) {
+  lastStatus = newStatus;
+  if (io) io.emit("status", newStatus);
+}
 
 function startClient() {
-  console.log("-----------------------------------------");
-  console.log("Initializing new WhatsApp client instance...");
-  io.emit("status", "Initializing client...");
+  qrRefreshCount = 0;
+  currentQr = null;
+  isAuthenticated = false;
+  isReady = false;
+
+  logger.info("WHATSAPP", "Launching headless browser and initializing engine...");
+  updateStatus("Launching browser engine...");
+
   const sessionPath = path.join(__dirname, "..", "session");
 
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: sessionPath }),
     puppeteer: {
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-default-apps",
+        "--disable-sync",
+        "--mute-audio",
+      ],
     },
-    qrTimeout: 60000,
+    qrTimeout: 0,
     authTimeoutMs: 60000,
   });
 
   client.on("loading_screen", (percent) => {
-    io.emit("status", `Connecting to WhatsApp... (${percent}%)`);
+    const msg = `Connecting to WhatsApp (${percent}%)...`;
+    updateStatus(msg);
+    logger.info("WHATSAPP", `⏳ Loading WhatsApp chats (${percent}%)...`);
   });
 
   client.on("qr", (qr) => {
-    console.log("QR RECEIVED: Please scan.");
-    io.emit("status", "QR code received. Please scan.");
-    io.emit("qr", qr);
-  });
+    currentQr = qr;
+    qrRefreshCount += 1;
+    isAuthenticated = false;
+    isReady = false;
 
-  client.on("ready", () => {
-    console.log("CLIENT READY: Session is valid. Client is connected.");
-    io.emit("status", "Connected");
-    io.emit("authenticated");
+    updateStatus("QR code received. Please scan.");
+    if (io) {
+      io.emit("qr", qr);
+      io.emit("show_qr");
+    }
+
+    logger.qr(qrRefreshCount, qrRefreshCount === 1);
   });
 
   client.on("authenticated", () => {
-    console.log("AUTHENTICATED: Session file validated.");
+    isAuthenticated = true;
+    currentQr = null;
+    logger.success("WHATSAPP", "Authentication successful. Session validated.");
+    updateStatus("Session authenticated. Syncing chats...");
+    if (io) io.emit("authenticated");
+  });
+
+  client.on("ready", () => {
+    isReady = true;
+    isAuthenticated = true;
+    currentQr = null;
+    qrRefreshCount = 0;
+
+    const userNumber = client.info?.wid?.user || "Unknown";
+    const pushName = client.info?.pushname ? ` (${client.info.pushname})` : "";
+    logger.success("WHATSAPP", `Client ready and connected as +${userNumber}${pushName}.`);
+
+    updateStatus("Connected");
+    if (io) {
+      io.emit("status", "Connected");
+      io.emit("authenticated");
+    }
   });
 
   client.on("auth_failure", (msg) => {
-    console.error(`AUTHENTICATION FAILURE: ${msg}`);
+    logger.error("WHATSAPP", `Authentication failed: ${msg}`);
     handleDisconnect(`Authentication Failure: ${msg}`);
   });
 
   client.on("disconnected", (reason) => {
+    logger.warn("WHATSAPP", `Session disconnected: "${reason}".`);
     handleDisconnect(reason);
   });
 
-  io.emit("status", "Launching browser...");
   client.initialize().catch((err) => {
-    console.error("Client initialization error:", err);
+    logger.error("WHATSAPP", "Client initialization error:", err.message || err);
     handleDisconnect("Initialization Timeout");
   });
 }
 
 async function handleDisconnect(reason) {
-    if (isRestarting) return;
-    isRestarting = true;
-    
-    console.log(`Client disconnected: "${reason}". Restarting...`);
-    io.emit("status", `Client disconnected. Restarting...`);
-    io.emit("show_qr");
-    
-    onClientDisconnect(io);
+  if (isRestarting) return;
+  isRestarting = true;
+  isAuthenticated = false;
+  isReady = false;
+  currentQr = null;
 
-    try {
-        if (client) await client.destroy();
-        console.log("Old client instance destroyed.");
-    } catch (e) {
-        console.error("Error during client destruction: ", e);
-    }
+  updateStatus("Client disconnected. Restarting...");
+  if (io) io.emit("show_qr");
 
-    setTimeout(() => {
-        startClient();
-        isRestarting = false;
-    }, 5000);
+  if (io) onClientDisconnect(io);
+
+  try {
+    if (client) await client.destroy();
+    logger.info("WHATSAPP", "Cleaned up previous WhatsApp browser instance.");
+  } catch (e) {
+    logger.warn("WHATSAPP", `Warning during client cleanup: ${e.message}`);
+  }
+
+  logger.info("WHATSAPP", "Restarting client in 5 seconds...");
+  setTimeout(() => {
+    startClient();
+    isRestarting = false;
+  }, 5000);
 }
 
 function initializeWhatsAppClient(socketIo) {
@@ -86,15 +143,23 @@ function initializeWhatsAppClient(socketIo) {
   startClient();
 
   io.on("connection", (socket) => {
-    console.log("UI CONNECTED: A user opened the web interface.");
-    if (client && client.info) {
-      console.log("UI STATUS: Informing user that client is already connected.");
+    logger.info("SOCKET", `Client connected (${socket.id}). Total clients: ${io.engine.clientsCount}`);
+
+    // Immediately push current state to newly connected client without delay
+    if (isReady || (client && client.info)) {
       socket.emit("status", "Connected");
       socket.emit("authenticated");
+    } else if (currentQr) {
+      socket.emit("status", "QR code received. Please scan.");
+      socket.emit("qr", currentQr);
+      socket.emit("show_qr");
     } else {
-      console.log("UI STATUS: Informing user that client is initializing.");
-      socket.emit("status", "Initializing client... Please wait.");
+      socket.emit("status", lastStatus);
     }
+
+    socket.on("disconnect", () => {
+      logger.info("SOCKET", `Client disconnected (${socket.id}).`);
+    });
   });
 }
 

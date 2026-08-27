@@ -4,10 +4,11 @@
   "description": "HALO Backend API and WhatsApp Web Automation Engine",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node --no-deprecation server.js",
+    "dev": "node --no-deprecation --watch server.js"
   },
   "dependencies": {
+    "chalk": "^4.1.2",
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",
     "express": "^4.18.2",

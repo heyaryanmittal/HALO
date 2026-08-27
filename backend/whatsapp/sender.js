@@ -2,6 +2,7 @@ const { MessageMedia } = require("whatsapp-web.js");
 const path = require("path");
 const fs = require("fs");
 const { getClient } = require("./client");
+const logger = require("../utils/logger");
 const {
   getCampaign,
   getCampaignState,
@@ -109,7 +110,7 @@ async function sendBatch(io) {
           for (const file of template.filePaths) {
             const mediaPath = path.resolve(__dirname, "../media", file);
 
-            console.log("MEDIA PATH:", mediaPath);
+            logger.info("MEDIA", `Attaching media asset: ${mediaPath}`);
 
             if (fs.existsSync(mediaPath)) {
               const media = MessageMedia.fromFilePath(mediaPath);

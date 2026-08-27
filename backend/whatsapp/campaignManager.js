@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { parseContacts } = require("../utils/parser");
+const logger = require("../utils/logger");
 let sendBatch;
 let stopSending;
 
@@ -254,7 +255,7 @@ function saveReport(io) {
   writeStream.write(csvContent + "\n");
   writeStream.end();
 
-  console.log(`Report data saved to ${reportPath}`);
+  logger.info("CAMPAIGN", `Report data saved to ${reportPath}`);
 }
 
 const getCampaign = () => campaign;
